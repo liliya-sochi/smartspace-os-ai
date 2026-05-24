@@ -12,10 +12,11 @@ from langchain_groq import ChatGroq
 
 from app.schema import SmartHomeState
 from app.agent_graph import app_graph
-# Импортируем функцию поиска из нашей векторной базы данных
 from app.rag_storage import search_in_documentation
+# ИМПОРТИРУЕМ НАШЕГО ИИ-АНАЛИТИКА ИЗ БАЗЫ SQL
+from app.db_analytics import ask_database_analyst
 
-app = FastAPI(title="SmartSpace Multi-Agent OS & RAG Backend", version="4.0.0")
+app = FastAPI(title="SmartSpace Multi-Agent OS, RAG & Analytics Backend", version="5.0.0")
 
 # Инициализируем модель Groq для прямого RAG-эндпоинта
 llm = ChatGroq(
@@ -97,53 +98,44 @@ async def process_smart_home_command(payload: UserCommandRequest):
             "updated_telemetry": current_global_home_state
         }
 
-# --- НАШ НОВЫЙ RAG ЭНДПОИНТ ДЛЯ РАБОТЫ С ДОКУМЕНТАМИ ---
 @app.get("/api/v1/ask_docs")
 async def ask_knx_documentation(question: str = Query(..., description="Вопрос по технической документации KNX/Zennio")):
     """Умный поиск по базе знаний KNX и Zennio с генерацией ответа через Llama 3.3."""
-    print(f"\n=== [НОВЫЙ ЗАПРОС К БАЗЕ ЗНАНИЙ]: '{question}' ===")
-    
-    # 1. Делаем семантический поиск по Qdrant
-    print("RAG Pipeline: Выполняю семантический поиск по векторам в Qdrant...")
     raw_contexts = search_in_documentation(question, top_k=3)
-    
     if not raw_contexts:
         return {"status": "error", "bot_reply": "К сожалению, в базе знаний не найдено релевантных документов."}
         
-    # 2. Склеиваем найденные куски текста в один блок контекста для ИИ
     formatted_context = ""
     sources_meta = []
-    
     for idx, ctx in enumerate(raw_contexts):
         formatted_context += f"\n[Document Fragment #{idx+1} from {ctx['file']}, Page {ctx['page']}]:\n{ctx['text']}\n"
-        sources_meta.append({
-            "source_file": ctx['file'],
-            "page": ctx['page'],
-            "semantic_score": round(ctx['score'], 4)
-        })
+        sources_meta.append({"source_file": ctx['file'], "page": ctx['page'], "semantic_score": round(ctx['score'], 4)})
         
-    # 3. Формируем промпт для Llama-3.3, передавая туда этот контекст
     system_prompt = (
         "Ты — высококлассный эксперт по автоматизации зданий и стандарту KNX.\n"
         "Твоя задача — ответить на вопрос инженера строго на основе предоставленных фрагментов документов.\n"
-        "Документы предоставлены на английском языке, но твой ответ должен быть полностью на русском языке, "
-        "в строгом техническом стиле, без "
-        "лишней «воды». Если в контексте нет прямого ответа на вопрос, честно скажи об этом и перескажи "
-        "только то, что удалось найти.\n\n"
+        "Документы предоставлены на английском языке, но твой ответ должен быть полностью на русском языке.\n\n"
         f"ПРЕДОСТАВЛЕННЫЕ ДАННЫЕ ИЗ БАЗЫ ЗНАНИЙ:\n{formatted_context}"
     )
+    ai_response = await llm.ainvoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": question}])
+    return {"status": "success", "bot_reply": ai_response.content, "sources_used": sources_meta}
+
+
+# --- НАШ НОВЫЙ ЭНДПОИНТ ИИ-АНАЛИТИКИ БАЗЫ ДАННЫХ (TEXT-TO-SQL) ---
+@app.get("/api/v1/analytics")
+async def get_db_analytics(query: str = Query(..., description="Аналитический вопрос к логам базы данных")):
+    """Интеллектуальная аналитика логов умного дома с автоматической генерацией SQL-запросов."""
+    print(f"\n=== [НОВЫЙ ЗАПРОС АНАЛИТИКИ]: '{query}' ===")
     
-    print("RAG Pipeline: Передаю контекст и вопрос в облачную модель Llama-3.3...")
-    ai_response = await llm.ainvoke([
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": question}
-    ])
+    # Запускаем наш Text-to-SQL конвейер
+    analytics_results = await ask_database_analyst(query)
     
     return {
         "status": "success",
-        "question": question,
-        "bot_reply": ai_response.content,
-        "sources_used": sources_meta
+        "question": query,
+        "sql_query_executed": analytics_results["sql_used"],
+        "raw_database_rows": analytics_results["raw_data"],
+        "bot_analytical_report": analytics_results["report"]
     }
 
 if __name__ == "__main__":
