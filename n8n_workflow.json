@@ -1,0 +1,181 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -208,
+        -80
+      ],
+      "id": "bcc5166b-52e4-4f3f-98bc-83a906d37e81",
+      "name": "Telegram Trigger",
+      "webhookId": "ea817aea-3f4c-4ca9-af06-0ce860814cfe",
+      "credentials": {
+        "telegramApi": {
+          "id": "sgJ3iLEmXORnR58K",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://comment-docile-ahoy.ngrok-free.dev/api/v1/command",
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={   \"command\": \"{{ $json.message.text }}\" }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "c25cc0f7-d9de-4ff8-a4fe-84ab0cfd08b8",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $node[\"Telegram Trigger\"].json.message.chat.id }}",
+        "text": "={{ $json.bot_reply }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        416,
+        -80
+      ],
+      "id": "f22e5c1b-20c4-48ef-a4c0-2f0ecd0ecfd4",
+      "name": "Send a text message",
+      "webhookId": "3e3ac2ee-ee43-4a0c-a6f1-275ade6c9a62",
+      "credentials": {
+        "telegramApi": {
+          "id": "sgJ3iLEmXORnR58K",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "879e6ace-5bbb-4d72-8db1-d13ea96a8af6",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "?",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        -80
+      ],
+      "id": "173144b2-c561-47f1-b464-b3fad5163ae5",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "url": "https://comment-docile-ahoy.ngrok-free.dev/api/v1/ask_docs",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "question",
+              "value": "={{ $json.message.text.substring(1).trim() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        -160
+      ],
+      "id": "6147667d-6c45-47f1-acc7-71872f3b5cc8",
+      "name": "HTTP Ask Docs"
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Ask Docs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Ask Docs": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0cdfa2031fd7e6c685d2e4d41b9093cfe43defa014109d64789f6c47a1e52e16"
+  }
+}
