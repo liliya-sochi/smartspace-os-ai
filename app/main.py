@@ -40,10 +40,15 @@ async def get_telemetry():
     """Получить текущую телеметрию умного дома."""
     return current_global_home_state
 
+# Мы расширяем входную модель данных, чтобы FastAPI умел принимать chat_id из n8n
+class UserCommandRequest(BaseModel):
+    command: str
+    chat_id: str = "default_session" # Если chat_id не передан, используем дефолтный
+
 @app.post("/api/v1/command")
 async def process_smart_home_command(payload: UserCommandRequest):
-    """Асинхронный семантический маршрутизатор: Ollama + LangGraph."""
-    print(f"\n=== [НОВЫЙ ЗАПРОС УПРАВЛЕНИЯ]: '{payload.command}' ===")
+    """Асинхронный семантический маршрутизатор с поддержкой долгосрочной памяти Redis."""
+    print(f"\n=== [НОВЫЙ ЗАПРОС УПРАВЛЕНИЯ]: '{payload.command}' (Chat ID: {payload.chat_id}) ===")
     
     router_prompt = (
         "Ты — системный маршрутизатор умного дома. Проанализируй команду пользователя.\n"
@@ -83,14 +88,23 @@ async def process_smart_home_command(payload: UserCommandRequest):
             "updated_telemetry": current_global_home_state
         }
     else:
+        print(f"Каскад моделей: Передаю управление в LangGraph сессии '{payload.chat_id}'...")
+        
         initial_state = {
             "messages": [("user", payload.command)],
             "home_telemetry": current_global_home_state,
             "execution_plan": [],
             "critical_warning": False
         }
-        final_output = await app_graph.ainvoke(initial_state)
+        
+        # КРИТИЧЕСКИ ВАЖНОЕ ИЗМЕНЕНИЕ ДЛЯ REDIS:
+        # Мы передаем конфигурационный словарь config, указывая в thread_id номер нашего чата.
+        # LangGraph сам залезет в Redis, вытащит старую историю для этого thread_id и объединит её!
+        config = {"configurable": {"thread_id": payload.chat_id}}
+        
+        final_output = await app_graph.ainvoke(initial_state, config=config)
         final_reply = final_output["messages"][-1].content
+        
         return {
             "status": "success",
             "processed_by": "Cloud_LangGraph_Llama3.3",

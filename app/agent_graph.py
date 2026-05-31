@@ -5,9 +5,10 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool
 from langgraph.graph import StateGraph, END
-
 from app.schema import AgentState
 from app.iot_tools import set_climate_sync, set_lighting_scene_sync
+from langgraph.checkpoint.memory import MemorySaver
+
 
 load_dotenv()
 
@@ -174,4 +175,10 @@ workflow.add_edge("execute_tools", "safety_validator")
 # А после узла безопасности возвращается в ИИ на проверку
 workflow.add_edge("safety_validator", "engineer_agent")
 
-app_graph = workflow.compile()
+# --- НАСТРОЙКА ОПЕРАТИВНОЙ ПАМЯТИ СЕССИЙ ---
+print("LangGraph: Инициализирую модуль памяти сессий...")
+memory_pool = MemorySaver()
+
+# Компилируем граф, передавая ему хранитель памяти
+app_graph = workflow.compile(checkpointer=memory_pool)
+print("LangGraph: Модуль памяти успешно подключен к графу.")
